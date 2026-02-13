@@ -2,9 +2,10 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
-#include "structs.h"
+#include "shared.h"
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #define PORT 6767
 
@@ -16,7 +17,7 @@ void process_msg(msgid_t msg) {
 
 int main() {
     int sockfd;
-    char buf[1024];
+    op_packet_t pkt;
     struct sockaddr_in pod_addr;
 
     puts("-- SuperPump 9000 --");
@@ -42,12 +43,12 @@ int main() {
     printf("Listening for connections at %d...\n", pod_addr.sin_addr.s_addr);
 
     while (1) {
-        recvfrom(sockfd, (void*)&buf, 1024, 0, NULL, NULL);
+        recvfrom(sockfd, (void*)&pkt, 1024, 0, NULL, NULL);
         printf("Received message\n");
-        printf("%s\n", buf);
+        printf("%s\n", pkt.data);
     }
 
-L_shutdown:
+    // Cleanup
     close(sockfd);
     return 0;
 
