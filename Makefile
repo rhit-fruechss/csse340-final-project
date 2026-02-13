@@ -1,6 +1,12 @@
+LIBS = "src/shared.c"
+
 pod-test:
-	gcc src/pod.c -o ./pod
+	gcc ${LIBS} src/pod.c -o ./pod
 	./pod
+
+remote-test:
+	gcc ${LIBS} src/remote.c -o ./remote
+	./remote
 
 pod-qemu:
 	if [ ! -d buildroot ]; then git clone https://github.com/buildroot/buildroot.git; fi

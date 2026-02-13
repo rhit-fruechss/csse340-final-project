@@ -1,8 +1,8 @@
 #ifndef _OP_SHARED_H_
 #define _OP_SHARED_H_
 #define MAX_COMMANDS 4
-#define PACKET_DATA_SIZE 8
-#define OP_SHARED_NONCE_START 0xdeadbeef // Assume this was established somehow with Diffie-Hellman.
+#define PACKET_DATA_SIZE 16
+#define OP_SHARED_NONCE_START 0xdeadbeef // Assume this was established with something like Diffie-Hellman.
 
 #include <stdlib.h>
 #include <stdint.h>
@@ -17,12 +17,14 @@ typedef enum {
 
 // Commands.
 // As a note, we are GREATLY simplifying the architecture for the purposes of this project.
+// We are also assuming ALL commands require a nonce.
 typedef enum {
-    SHUTDOWN = 1,
-    SETUP_POD = 2,
-    RESCHEDULE = 3,
-    DEPOSIT_5U = 4,
-    DEPOSIT_45U = 5,
+    CMD_EMPTY = 0, // Do nothing
+    CMD_SHUTDOWN = 1, // Shut down the pod
+    CMD_SETUP_POD = 2, // Set up the pod
+    CMD_RESCHEDULE = 3, // Reschedule (this would have parameters but we're ignoring them)
+    CMD_DEPOSIT_5U = 4, // 
+    CMD_DEPOSIT_45U = 5,
 } op_cmd_t;
 
 // Nonce - just use an unsigned int
@@ -35,7 +37,7 @@ typedef struct op_msg {
 } op_msg_t;
 
 typedef struct op_packet {
-    uint8_t podid; // Packet ID
+    uint8_t podid; // Pod ID
     op_pkttype_t pkttype; // Packet type
     uint8_t pktnum; // Packet order number
     char data[PACKET_DATA_SIZE];
@@ -65,7 +67,9 @@ void op_send_packet(int destsockfd, uint8_t podid, op_pkttype_t pkttype, uint8_t
 
 void op_receive_packet(int srcsockfd, op_packet_t *packet);
 
-void op_receive_message(int srcsockfd, op_msg_t *message);
+void op_receive_message_header(int srcsockfd, size_t *msglen, op_pkttype_t *pkttype, int *podid, op_nonce_t *nonce, char *initial_data);
+
+void op_receive_message_body(int srcsockfd, size_t msglen, op_msg_t *message, int podid, char *init_data, size_t init_msglen);
 
 op_nonce_t op_next_nonce(op_nonce_t nonce);
 #endif
