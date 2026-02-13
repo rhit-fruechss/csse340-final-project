@@ -1,6 +1,12 @@
 #include <stdio.h>
+#include <sys/types.h>
 #include <sys/socket.h>
+#include <arpa/inet.h>
 #include "structs.h"
+#include <stdlib.h>
+#include <string.h>
+
+#define PORT 6767
 
 typedef char msgid_t;
 
@@ -10,8 +16,8 @@ void process_msg(msgid_t msg) {
 
 int main() {
     int sockfd;
-    packet_t buf;
-    struct sockaddr_in pod_addr, client_addr;
+    char buf[1024];
+    struct sockaddr_in pod_addr;
 
     puts("-- SuperPump 9000 --");
     puts("Enabling server...");
@@ -22,19 +28,27 @@ int main() {
         exit(1);
     }
     
-    // Bind socket (source: https://www.linuxhowtos.org/C_C++/socket.htm) 
+    memset(&pod_addr, 0, sizeof(pod_addr));
     pod_addr.sin_family = AF_INET;
-    pod_addr.sin_port = htons(6767);
-    pod_addr.sin_addr.s_addr = INADDR_ANY;
+    pod_addr.sin_port = htons(PORT);
+    pod_addr.sin_addr.s_addr = htonl(INADDR_ANY);
     if (bind(sockfd, (struct sockaddr*) &pod_addr, sizeof(pod_addr)) < 0) {
         perror("error: bind\n");
         exit(1);
     }
 
-    listen(sockfd, 5);
+    socklen_t pod_addrlen = sizeof(pod_addr);
+    int sockname = getsockname(sockfd, (struct sockaddr*) &pod_addr, &pod_addrlen);
+    printf("Listening for connections at %d...\n", pod_addr.sin_addr.s_addr);
 
-    puts("Listening for connections...");
+    while (1) {
+        recvfrom(sockfd, (void*)&buf, 1024, 0, NULL, NULL);
+        printf("Received message\n");
+        printf("%s\n", buf);
+    }
 
+L_shutdown:
+    close(sockfd);
     return 0;
 
 }
