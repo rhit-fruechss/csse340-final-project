@@ -1,3 +1,4 @@
+#include <netinet/in.h>
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -9,41 +10,75 @@
 
 #define PORT 6767
 
+op_cmd_t make_cmd(char input) {
+    switch (input) {
+        case 's':
+            return CMD_SETUP_POD;
+            break;
+        case 'S':
+            return CMD_RESCHEDULE;
+        case '5':
+            return CMD_DEPOSIT_5U;
+            break;
+        case '4':
+            return CMD_DEPOSIT_45U;
+            break;
+        case 'q':
+            return CMD_SHUTDOWN;
+            break;
+        default:
+            return CMD_EMPTY;
+    }
+}
+
 int main() {
-    int sockfd;
+    int sockfd, podsockfd;
     op_nonce_t nonce = OP_SHARED_NONCE_START;
-    struct sockaddr_in pod_addr;
+    struct sockaddr_in pdr_addr, pod_addr;
+    socklen_t pod_addrlen;
+
+    op_cmd_t commands[MAX_COMMANDS];
 
     puts("-- SuperPump Manager 9000 --");
     puts("Enabling server...");
-
-    // Refer to: https://users.cs.jmu.edu/bernstdh/web/common/lectures/summary_unix_udp.php
-    if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
-        perror("error: socket\n");
-        exit(1);
-    }
     
-    memset(&pod_addr, 0, sizeof(pod_addr));
-    pod_addr.sin_family = AF_INET;
-    pod_addr.sin_port = htons(PORT);
-    pod_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    if (bind(sockfd, (struct sockaddr*) &pod_addr, sizeof(pod_addr)) < 0) {
+    op_makeinetaddr(INADDR_ANY, PORT, &pdr_addr);
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+
+    if (bind(sockfd, (struct sockaddr*)&pdr_addr, sizeof(struct sockaddr_in)) < 0) {
         perror("error: bind\n");
         exit(1);
     }
 
-    socklen_t pod_addrlen = sizeof(pod_addr);
-    int sockname = getsockname(sockfd, (struct sockaddr*) &pod_addr, &pod_addrlen);
-    printf("Listening for connections at %d...\n", pod_addr.sin_addr.s_addr);
+    listen(sockfd, 5);
+
+    if ((podsockfd = accept(sockfd, (struct sockaddr*)&pod_addr, &pod_addrlen)) < 0) {
+        perror("error: accept\n");
+        exit(1);
+    }
+
+    puts("Connected.");
 
     int should_continue = 1;
     while (should_continue) {
+        op_cmd_t cmds[MAX_COMMANDS] = { CMD_EMPTY };
+
+        // Take commands from stdin
+        int i = 0;
+        char c;
+        while ((c = getc(stdin)) != '\n') {
+            cmds[i++] = make_cmd(c);
+        }
+
+        op_send_commands(sockfd, podsockfd, PKTTYPE_PDM, 1, nonce, cmds, i);
+
         nonce = op_next_nonce(nonce);
         printf("New nonce: %x\n", nonce);
     }
 
     // Cleanup
     close(sockfd);
+    close(podsockfd);
     return 0;
 
 }

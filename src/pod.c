@@ -11,31 +11,41 @@
 #define PORT 6767
 #define POD_ID 1
 
-void process_msg(op_msg_t *msg, int *should_continue) {
-    for (int i = 0; i < MAX_COMMANDS; i++) {
-        op_cmd_t cmd = msg->cmds[i];
+void process_msg(op_msg_t *msg, op_nonce_t nonce, int *should_continue, int *regen_nonce) {
+    int ncmds = (msg->msg_len - sizeof(size_t)) / sizeof(op_cmdlet_t);
+    for (int i = 0; i < ncmds; i++) {
+        op_cmdlet_t cmdlet = msg->cmds[i];
+        if (cmdlet.nonce != nonce) {
+            perror("Invalid nonce given for command: ignoring...\n");
+            *regen_nonce = 0;
+            return;
+        }
+
+        op_cmd_t cmd = cmdlet.cmd;
         switch (cmd) {
-            case CMD_EMPTY:
-                puts("-- END OF COMMANDS --");
-                return;
             case CMD_SETUP_POD:
                 puts("-- SETUP POD --");
-                return;
+                break;
             case CMD_SHUTDOWN:
-                puts(" -- SHUTDOWN -- ");
+                puts("-- SHUTDOWN -- ");
                 *should_continue = 0;
                 return;
             case CMD_RESCHEDULE:
-                puts(" -- RESCHEDULE -- ");
+                puts("-- RESCHEDULE -- ");
                 break;
             case CMD_DEPOSIT_5U:
-                puts(" -- DEPOSIT - 5U -- ");
+                puts("-- DEPOSIT - 5U -- ");
                 break;
             case CMD_DEPOSIT_45U:
-                puts(" -- DEPOSIT - 45U -- ");
+                puts("-- DEPOSIT - 45U -- ");
+                break;
+            default:
+                printf("UNKNOWN: ");
+                debug_hexdump((void*)&cmdlet, sizeof(op_cmdlet_t));
                 break;
         }
     }
+    printf("-- END OF MESSAGE -- \n");
 }
 
 int main() {
@@ -46,7 +56,7 @@ int main() {
     puts("-- SuperPump 9000 --");
     puts("Enabling server...");
 
-    // Refer to: https://users.cs.jmu.edu/bernstdh/web/common/lectures/summary_unix_udp.php
+    // Refer to: https://www.geeksforgeeks.org/c/socket-programming-cc/
     op_makeinetaddr(INADDR_ANY, PORT, &pdm_addr);
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -56,40 +66,37 @@ int main() {
     }
 
     // Connect to the other socket
-    printf("Connected. %d\n", getsockname(sockfd, (struct sockaddr*)&pdm_addr, NULL));
+    printf("Connected.\n");
 
     int should_continue = 1;
     while (should_continue) {
-        size_t msg_len;
-        op_pkttype_t msg_pkttype;
-        int msg_podid;
-        char initial_data[sizeof(op_packet_t)];
-        op_nonce_t nonce_to_check;
-        op_receive_message_header(sockfd, &msg_len, &msg_pkttype, &msg_podid, &nonce_to_check, initial_data);
-        printf("Received packet: %x, %x, %x.\n", msg_podid, msg_pkttype, nonce_to_check);
+        size_t msglen;
+        op_packet_t packet;
+
+        op_receive_message_header(sockfd, &packet, &msglen);
+        printf("Received packet: %x, %x.\n", packet.podid, packet.pkttype);
 
         // Preliminary checks
-        if (msg_pkttype != PKTTYPE_PDM) {
+        if (packet.pkttype != PKTTYPE_PDM) {
             printf("Packet is not from PDM, ignoring...\n");
             continue;
         }
-        else if (msg_podid != POD_ID) {
+        else if (packet.podid != POD_ID) {
             printf("Packet is not meant for this pod, ignoring...\n");
             continue;
         }
-        else if (nonce_to_check != nonce) {
-            printf("Packet received invalid nonce\n(expected: %x, actual: %x)\n", nonce, nonce_to_check);
-            continue;
-        }
-        printf("Awaiting message body (expecting %lu bytes)...\n", msg_len);
+        printf("Awaiting message body (expecting %lu bytes)...\n", msglen);
 
         op_msg_t msg;
-        op_receive_message_body(sockfd, msg_len, &msg, POD_ID, initial_data, PACKET_DATA_SIZE);
+        op_receive_message_body(sockfd, msglen, &msg, POD_ID, packet.data, PACKET_DATA_SIZE);
 
-        process_msg(&msg, &should_continue);
+        int regen_nonce = 1;
+        process_msg(&msg, nonce, &should_continue, &regen_nonce);
 
-        nonce = op_next_nonce(nonce);
-        printf("New nonce: %x\n", nonce);
+        if (regen_nonce) {
+            nonce = op_next_nonce(nonce);
+            printf("New nonce: %x\n", nonce);
+        }
     }
 
     // Cleanup

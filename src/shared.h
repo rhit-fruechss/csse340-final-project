@@ -34,17 +34,23 @@ typedef enum {
 // Nonce - just use an unsigned int
 typedef unsigned int op_nonce_t;
 
+// Commands with nonces.
+typedef struct op_cmdlet {
+    op_nonce_t nonce;
+    op_cmd_t cmd;
+} op_cmdlet_t;
+
+
 typedef struct op_msg {
     size_t msg_len; // Message length in bytes
-    op_nonce_t nonce; // Normally this is stored per command, but all the commands share the same nonce.
-    op_cmd_t cmds[MAX_COMMANDS]; // All commands to send
+    op_cmdlet_t cmds[MAX_COMMANDS]; // All commands to send
 } op_msg_t;
 
 typedef struct op_packet {
-    unsigned char podid; // Pod ID
+    unsigned int podid; // Pod ID
     op_pkttype_t pkttype; // Packet type
-    unsigned char pktnum; // Packet order number
-    char data[PACKET_DATA_SIZE];
+    unsigned int pktnum; // Packet order number
+    char data[PACKET_DATA_SIZE]; // Packet contents
 } op_packet_t;
 
 // Sends commands.
@@ -64,18 +70,20 @@ typedef struct op_packet {
 //  - nonce: the nonce to send to check the data
 //  - cmds: the commands to send
 //  - ncmds: the number of commands to send
-void op_send_commands(int srcsockfd, int destsockfd, op_pkttype_t src, int podid, op_nonce_t nonce, op_cmd_t *cmds, int ncmds);
+void op_send_commands(int srcsockfd, int destsockfd, op_pkttype_t src, int podid, op_nonce_t nonce, op_cmdlet_t *cmds, int ncmds);
 
 // Sends a single packet.
-void op_send_packet(int destsockfd, unsigned char podid, op_pkttype_t pkttype, unsigned char pktnum, char *data, int n);
+void op_send_packet(int destsockfd, unsigned int podid, op_pkttype_t pkttype, unsigned int pktnum, char *data, int n);
 
 int op_receive_packet(int srcsockfd, op_packet_t *packet);
 
-void op_receive_message_header(int srcsockfd, size_t *msglen, op_pkttype_t *pkttype, int *podid, op_nonce_t *nonce, char *initial_data);
+void op_receive_message_header(int srcsockfd, op_packet_t *packet, size_t *msglen);
 
 void op_receive_message_body(int srcsockfd, size_t msglen, op_msg_t *message, int podid, char *init_data, size_t init_msglen);
 
 void op_makeinetaddr(uint32_t inaddr, uint16_t port, struct sockaddr_in *addr);
 
 op_nonce_t op_next_nonce(op_nonce_t nonce);
+
+void debug_hexdump(void* data, int n);
 #endif
