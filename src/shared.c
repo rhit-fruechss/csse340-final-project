@@ -2,8 +2,9 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <string.h>
+#include <stdio.h>
 
-void op_send_commands(int destsockfd, op_pkttype_t src, int podid, op_nonce_t nonce, op_cmd_t *cmds, int ncmds) {
+void op_send_commands(int srcsockfd, int destsockfd, op_pkttype_t src, int podid, op_nonce_t nonce, op_cmd_t *cmds, int ncmds) {
     op_packet_t received_packet;
     int msg_len = sizeof(op_nonce_t) + sizeof(op_cmd_t) * ncmds;
     int true_msg_len = sizeof(size_t) + msg_len;
@@ -19,7 +20,7 @@ void op_send_commands(int destsockfd, op_pkttype_t src, int podid, op_nonce_t no
         op_send_packet(destsockfd, podid, is_first ? src : PKTTYPE_CON, (uint8_t)pktnum, byte_ptr, is_last ? (true_msg_len - pktnum) : PACKET_DATA_SIZE);
         is_first = 0;
         if (!is_last) {
-            op_receive_packet(destsockfd, &received_packet); // Should be ACK packet. We don't actually care about the contents.
+            op_receive_packet(srcsockfd, &received_packet); // Should be ACK packet. We don't actually care about the contents.
         }
         usleep(10000); // By waiting 10ms, we make jamming much easier.
     }
@@ -34,17 +35,22 @@ void op_send_packet(int destsockfd, uint8_t podid, op_pkttype_t pkttype, uint8_t
     send(destsockfd, (void*)&packet, sizeof(op_packet_t), 0);
 }
 
-void op_receive_packet(int srcsockfd, op_packet_t *packet) {
-    recvfrom(srcsockfd, (void*)packet, sizeof(op_packet_t), 0, NULL, NULL);
+int op_receive_packet(int srcsockfd, op_packet_t *packet) {
+    bzero(packet, sizeof(op_packet_t));
+    int len = recv(srcsockfd, (void*)packet, sizeof(op_packet_t), 0);
+    return len;
 }
 
 void op_receive_message_header(int srcsockfd, size_t *msglen, op_pkttype_t *pkttype, int *podid, op_nonce_t *nonce, char *initial_data) {
     op_packet_t packet;
-    op_receive_packet(srcsockfd, &packet);
+    if (op_receive_packet(srcsockfd, &packet) == 0) {
+        perror("error: disconnect");
+        exit(1);
+    }
     *pkttype = packet.pkttype;
     *podid = packet.podid;
-    memcpy((void*)msglen, (void*)&packet.data, sizeof(size_t));
-    memcpy((void*)nonce, (void*)(&packet.data + sizeof(size_t)), sizeof(op_nonce_t));
+    memcpy((void*)msglen, (void*)packet.data, sizeof(size_t));
+    memcpy((void*)nonce, (void*)(packet.data + sizeof(size_t)), sizeof(op_nonce_t));
     memcpy((void*)initial_data, (void*)&packet.data, PACKET_DATA_SIZE);
 }
 
@@ -55,14 +61,22 @@ void op_receive_message_body(int srcsockfd, size_t msglen, op_msg_t *message, in
 
     // Should copy length and nonce
     memcpy((void*)(message), (void*)init_data, init_msglen);
+    printf("Reading %lu bytes (starting at %lu)...\n", msglen, init_msglen);
     for (int i = init_msglen; i < msglen; i += PACKET_DATA_SIZE) {
         op_packet_t packet;
         int pktnum = i / PACKET_DATA_SIZE;
         op_send_packet(srcsockfd, podid, PKTTYPE_ACK, (uint8_t)pktnum, "", 0);
         op_receive_packet(srcsockfd, &packet);
-        memcpy((void*)((char*)&message + i), (void*)packet.data, PACKET_DATA_SIZE);
+        memcpy((void*)(((char*)&message) + i), (void*)packet.data, PACKET_DATA_SIZE);
     }
 }
+
+void op_makeinetaddr(uint32_t inaddr, uint16_t port, struct sockaddr_in *sockaddr) {
+    sockaddr->sin_family = AF_INET;
+    sockaddr->sin_port = htons(port);
+    sockaddr->sin_addr.s_addr = inaddr;
+}
+
 
 op_nonce_t op_next_nonce(op_nonce_t nonce) {
     // They almost certainly do a computation that is FAR more complicated than this.

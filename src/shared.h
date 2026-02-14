@@ -2,10 +2,14 @@
 #define _OP_SHARED_H_
 #define MAX_COMMANDS 4
 #define PACKET_DATA_SIZE 16
-#define OP_SHARED_NONCE_START 0xdeadbeef // Assume this was established with something like Diffie-Hellman.
+
+// Assume this was established with something like Diffie-Hellman.
+#define OP_SHARED_NONCE_START 0xdeadbeef 
 
 #include <stdlib.h>
 #include <stdint.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
 
 // Packet type.
 typedef enum {
@@ -23,12 +27,12 @@ typedef enum {
     CMD_SHUTDOWN = 1, // Shut down the pod
     CMD_SETUP_POD = 2, // Set up the pod
     CMD_RESCHEDULE = 3, // Reschedule (this would have parameters but we're ignoring them)
-    CMD_DEPOSIT_5U = 4, // 
-    CMD_DEPOSIT_45U = 5,
+    CMD_DEPOSIT_5U = 4, // Deposit 5 units insulin 
+    CMD_DEPOSIT_45U = 5, // Deposit 45 units insulin
 } op_cmd_t;
 
 // Nonce - just use an unsigned int
-typedef uint32_t op_nonce_t;
+typedef unsigned int op_nonce_t;
 
 typedef struct op_msg {
     size_t msg_len; // Message length in bytes
@@ -37,9 +41,9 @@ typedef struct op_msg {
 } op_msg_t;
 
 typedef struct op_packet {
-    uint8_t podid; // Pod ID
+    unsigned char podid; // Pod ID
     op_pkttype_t pkttype; // Packet type
-    uint8_t pktnum; // Packet order number
+    unsigned char pktnum; // Packet order number
     char data[PACKET_DATA_SIZE];
 } op_packet_t;
 
@@ -60,16 +64,18 @@ typedef struct op_packet {
 //  - nonce: the nonce to send to check the data
 //  - cmds: the commands to send
 //  - ncmds: the number of commands to send
-void op_send_commands(int destsockfd, op_pkttype_t src, int podid, op_nonce_t nonce, op_cmd_t *cmds, int ncmds);
+void op_send_commands(int srcsockfd, int destsockfd, op_pkttype_t src, int podid, op_nonce_t nonce, op_cmd_t *cmds, int ncmds);
 
 // Sends a single packet.
-void op_send_packet(int destsockfd, uint8_t podid, op_pkttype_t pkttype, uint8_t pktnum, char *data, int n);
+void op_send_packet(int destsockfd, unsigned char podid, op_pkttype_t pkttype, unsigned char pktnum, char *data, int n);
 
-void op_receive_packet(int srcsockfd, op_packet_t *packet);
+int op_receive_packet(int srcsockfd, op_packet_t *packet);
 
 void op_receive_message_header(int srcsockfd, size_t *msglen, op_pkttype_t *pkttype, int *podid, op_nonce_t *nonce, char *initial_data);
 
 void op_receive_message_body(int srcsockfd, size_t msglen, op_msg_t *message, int podid, char *init_data, size_t init_msglen);
+
+void op_makeinetaddr(uint32_t inaddr, uint16_t port, struct sockaddr_in *addr);
 
 op_nonce_t op_next_nonce(op_nonce_t nonce);
 #endif

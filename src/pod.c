@@ -1,3 +1,4 @@
+#include <netinet/in.h>
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -40,29 +41,22 @@ void process_msg(op_msg_t *msg, int *should_continue) {
 int main() {
     int sockfd;
     op_nonce_t nonce = OP_SHARED_NONCE_START;
-    struct sockaddr_in pod_addr;
+    struct sockaddr_in pdm_addr;
 
     puts("-- SuperPump 9000 --");
     puts("Enabling server...");
 
     // Refer to: https://users.cs.jmu.edu/bernstdh/web/common/lectures/summary_unix_udp.php
-    if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
-        perror("error: socket\n");
-        exit(1);
-    }
-    
-    memset(&pod_addr, 0, sizeof(pod_addr));
-    pod_addr.sin_family = AF_INET;
-    pod_addr.sin_port = htons(PORT);
-    pod_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    if (bind(sockfd, (struct sockaddr*) &pod_addr, sizeof(pod_addr)) < 0) {
-        perror("error: bind\n");
-        exit(1);
+    op_makeinetaddr(INADDR_ANY, PORT, &pdm_addr);
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+
+    if (connect(sockfd, (struct sockaddr*)&pdm_addr, sizeof(struct sockaddr_in)) < 0) {
+        perror("error: connect\n");
+        return 0;
     }
 
-    socklen_t pod_addrlen = sizeof(pod_addr);
-    int sockname = getsockname(sockfd, (struct sockaddr*) &pod_addr, &pod_addrlen);
-    printf("Listening for connections at %d...\n", pod_addr.sin_addr.s_addr);
+    // Connect to the other socket
+    printf("Connected. %d\n", getsockname(sockfd, (struct sockaddr*)&pdm_addr, NULL));
 
     int should_continue = 1;
     while (should_continue) {
@@ -72,7 +66,7 @@ int main() {
         char initial_data[sizeof(op_packet_t)];
         op_nonce_t nonce_to_check;
         op_receive_message_header(sockfd, &msg_len, &msg_pkttype, &msg_podid, &nonce_to_check, initial_data);
-        printf("Received packet.\n");
+        printf("Received packet: %x, %x, %x.\n", msg_podid, msg_pkttype, nonce_to_check);
 
         // Preliminary checks
         if (msg_pkttype != PKTTYPE_PDM) {
@@ -84,13 +78,13 @@ int main() {
             continue;
         }
         else if (nonce_to_check != nonce) {
-            printf("Packet received invalid nonce (expected: %x, actual: %x)", nonce, nonce_to_check);
+            printf("Packet received invalid nonce\n(expected: %x, actual: %x)\n", nonce, nonce_to_check);
             continue;
         }
-        puts("Awaiting message body...");
+        printf("Awaiting message body (expecting %lu bytes)...\n", msg_len);
 
         op_msg_t msg;
-        op_receive_message_body(sockfd, msg_len, &msg, POD_ID, initial_data, sizeof(op_packet_t));
+        op_receive_message_body(sockfd, msg_len, &msg, POD_ID, initial_data, PACKET_DATA_SIZE);
 
         process_msg(&msg, &should_continue);
 
