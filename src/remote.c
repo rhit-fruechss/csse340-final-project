@@ -5,27 +5,22 @@
 #include <arpa/inet.h>
 #include "shared.h"
 #include <stdlib.h>
-#include <string.h>
 #include <unistd.h>
 
-#define PORT 6767
+#define PORT 6768
 
 op_cmd_t make_cmd(char input) {
     switch (input) {
         case 's':
             return CMD_SETUP_POD;
-            break;
         case 'S':
             return CMD_RESCHEDULE;
         case '5':
             return CMD_DEPOSIT_5U;
-            break;
         case '4':
             return CMD_DEPOSIT_45U;
-            break;
         case 'q':
             return CMD_SHUTDOWN;
-            break;
         default:
             return CMD_EMPTY;
     }
