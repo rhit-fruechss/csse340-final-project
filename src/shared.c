@@ -6,18 +6,22 @@
 
 void op_send_commands(int srcsockfd, int destsockfd, op_pkttype_t src, int podid, op_nonce_t nonce, op_cmdlet_t *cmds, int ncmds) {
     op_packet_t received_packet;
-    int msg_len = sizeof(op_msg_t);
-    int true_msg_len = sizeof(size_t) + msg_len;
+
+    // Construct message
+    int msg_len = sizeof(size_t) + sizeof(op_cmdlet_t) * ncmds;
     op_msg_t msg;
     msg.msg_len = msg_len;
+    for (int i = 0; i < ncmds; i++) {
+        msg.cmds[i].nonce = nonce;
+        msg.cmds[i].cmd = cmds[i].cmd;
+    }
 
     int is_first = 1;
-    for (int i = 0; i < true_msg_len; i += PACKET_DATA_SIZE) {
-        printf("%d %d\n", true_msg_len, msg_len);
+    for (int i = 0; i < msg_len; i += PACKET_DATA_SIZE) {
         int pktnum = i / PACKET_DATA_SIZE;
-        int is_last = i + PACKET_DATA_SIZE <= true_msg_len;
+        int is_last = i + PACKET_DATA_SIZE <= msg_len;
         char *byte_ptr = ((char*)&msg) + i;
-        op_send_packet(destsockfd, podid, is_first ? src : PKTTYPE_CON, (uint8_t)pktnum, byte_ptr, is_last ? (true_msg_len - pktnum) : PACKET_DATA_SIZE);
+        op_send_packet(destsockfd, podid, is_first ? src : PKTTYPE_CON, pktnum, byte_ptr, is_last ? (msg_len - pktnum) : PACKET_DATA_SIZE);
         is_first = 0;
         if (!is_last) {
             op_receive_packet(srcsockfd, &received_packet); // Should be ACK packet. We don't actually care about the contents.

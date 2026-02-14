@@ -37,8 +37,6 @@ int main() {
     struct sockaddr_in pdr_addr, pod_addr;
     socklen_t pod_addrlen;
 
-    op_cmd_t commands[MAX_COMMANDS];
-
     puts("-- SuperPump Manager 9000 --");
     puts("Enabling server...");
     
@@ -61,16 +59,17 @@ int main() {
 
     int should_continue = 1;
     while (should_continue) {
-        op_cmd_t cmds[MAX_COMMANDS] = { CMD_EMPTY };
+        op_cmdlet_t cmdlets[MAX_COMMANDS];
 
         // Take commands from stdin
         int i = 0;
         char c;
         while ((c = getc(stdin)) != '\n') {
-            cmds[i++] = make_cmd(c);
+            cmdlets[i].nonce = nonce;
+            cmdlets[i++].cmd = make_cmd(c);
         }
 
-        op_send_commands(sockfd, podsockfd, PKTTYPE_PDM, 1, nonce, cmds, i);
+        op_send_commands(sockfd, podsockfd, PKTTYPE_PDM, 1, nonce, cmdlets, i);
 
         nonce = op_next_nonce(nonce);
         printf("New nonce: %x\n", nonce);
